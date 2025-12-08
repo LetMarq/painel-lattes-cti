@@ -1,0 +1,52 @@
+# --- Pacotes necessários ---
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+library(tidyr)
+
+# --- Base de dados combinada (já deve existir: dados_unicamp_resumo) ---
+# Colunas: sexo | cor_ou_raca | qtd
+
+# --- Garantir ordem e criar frames para simular crescimento ---
+dados_anim <- dados_unicamp_resumo %>%
+  arrange(sexo, desc(qtd)) %>%
+  expand_grid(frame = seq(0, 1, length.out = 80)) %>%   # 80 frames = crescimento suave
+  mutate(qtd_anim = qtd * frame)
+
+# --- Gráfico base ---
+p <- ggplot(dados_anim,
+            aes(x = reorder(cor_ou_raca, qtd),
+                y = qtd_anim,
+                fill = sexo)) +
+  geom_col(position = "dodge", show.legend = TRUE) +
+  coord_flip() +
+  labs(
+    title = "Formados na UNICAMP (Mestrado + Doutorado)",
+    subtitle = "Barras crescendo simultaneamente por sexo",
+    x = "Cor ou Raça",
+    y = "Número de pessoas",
+    fill = "Sexo"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    plot.subtitle = element_text(size = 13, margin = margin(b = 10)),
+    axis.text = element_text(size = 12)
+  )
+
+# --- Animação suave ---
+anim <- p +
+  transition_manual(frame) +
+  ease_aes("cubic-in-out")
+
+# --- Renderização com tempo ajustado ---
+animate(
+  anim,
+  nframes = 160,       # 80 frames animando + 80 estáticos
+  fps = 20,            # 20 quadros por segundo
+  duration = 8,        # animação de 8 segundos
+  end_pause = 100,     # pausa de 5 segundos no fim (~20 fps * 5)
+  width = 900,
+  height = 650,
+  renderer = gifski_renderer("formados_unicamp_todos_crescendo.gif")
+)
