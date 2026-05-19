@@ -37,45 +37,35 @@ processar <- function(df, padrao_instituicao, nome) {
     )
   
   # --- Limpar e converter valores monetários para numérico ---
-  # Remover símbolos, substituir vírgula por ponto, converter para número
   df <- df %>%
     mutate(
       valor_R = valor_R %>% 
-        str_replace_all("[^0-9,]", "") %>%   # Remover tudo que não é número ou vírgula
-        str_replace(",", ".") %>%               # Converter "1.000,00" em "1000.00"
-        as.numeric(),                           # Converter para número
-      instituicao = str_to_lower(instituicao),  # Minúsculas para comparação
-      modalidade  = str_to_lower(modalidade)    # Minúsculas para comparação
+        str_replace_all("[^0-9,]", "") %>%   
+        str_replace(",", ".") %>%               
+        as.numeric(),                           
+      instituicao = str_to_lower(instituicao),  
+      modalidade  = str_to_lower(modalidade)    
     )
   
   # --- Aplicar filtros ---
-  # 1. Remover valores vazios ou inválidos
-  # 2. Filtrar apenas a instituição desejada
-  # 3. Manter apenas mestrado e doutorado (cursos de pós-graduação)
   df <- df %>%
     filter(!is.na(valor_R)) %>%
-    filter(str_detect(instituicao, padrao_instituicao)) %>%
-    filter(str_detect(modalidade, "mestrado|doutorado"))
+    filter(str_detect(instituicao, padrao_instituicao))
   
   # --- AGREGAÇÕES DE DADOS ---
-  # Tabela: fomento cruzado por sexo e raça
   genero_raca <- df %>%
     group_by(sexo, raca) %>%
     summarise(valor_total = sum(valor_R), .groups = "drop")
   
-  # Tabela: fomento total por grande área de pesquisa
   area <- df %>%
     group_by(grande_area) %>%
     summarise(valor_total = sum(valor_R), .groups = "drop")
   
-  # Valor total de fomento
   total <- sum(df$valor_R)
   
   # --- GRÁFICOS ---
-  # Gráfico 1: Barras agrupadas por sexo e raça
-  # Permite comparação visual entre gêneros dentro de cada categoria racial
   plot_genero_raca <- ggplot(genero_raca, aes(raca, valor_total, fill = sexo)) +
-    geom_col(position = "dodge") +  # Barras lado a lado
+    geom_col(position = "dodge") +  
     labs(
       title = paste("Fomento por Gênero e Raça -", nome),
       x = "Raça", 
@@ -85,11 +75,9 @@ processar <- function(df, padrao_instituicao, nome) {
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   
-  # Gráfico 2: Barras horizontais ordenadas por valor
-  # Facilita a leitura de nomes longos de áreas
   plot_area <- ggplot(area, aes(reorder(grande_area, valor_total), valor_total)) +
     geom_col(fill = "#2E86AB") +
-    coord_flip() +  # Inverte para ler melhor
+    coord_flip() +  
     labs(
       title = paste("Fomento por Grande Área -", nome),
       x = "Grande Área", 
@@ -109,42 +97,34 @@ processar <- function(df, padrao_instituicao, nome) {
 # ========================================
 # CARREGAR DADOS
 # ========================================
-# Lê o arquivo CSV do painel de fomento (CNPQ)
-# Nota: Arquivo usa encoding UTF-16 (padrão CNPQ)
-
 dados <- read_delim(
   "Painel_Fomento(tab).csv",
-  delim = "\t",                          # Delimitador é tabulação
-  locale = locale(encoding = "UTF-16")   # Encoding padrão CNPQ
+  delim = "\t",                                  
+  locale = locale(encoding = "UTF-16")   
 )
 
 # A primeira linha contém os nomes das colunas
 colnames(dados) <- as.character(unlist(dados[1, ]))
-dados <- dados[-1, ]  # Remover a primeira linha de dados
+dados <- dados[-1, ]  
 
 # ========================================
 # PROCESSAR DADOS POR INSTITUIÇÃO
 # ========================================
-# Aplica a função para UNICAMP e UFBA
-# Cada padrão captura variações do nome da instituição
-
 unicamp <- processar(
   dados, 
-  "unicamp|estadual de campinas",  # Padrões para identificar UNICAMP
+  "unicamp|estadual de campinas",  
   "UNICAMP"
 )
 
 ufba <- processar(
   dados, 
-  "ufba|federal da bahia",  # Padrões para identificar UFBA
+  "ufba|federal da bahia",  
   "UFBA"
 )
 
 # ========================================
-# EXIBIR RESULTADOS
+# EXIBIR RESULTADOS DOS GRÁFICOS
 # ========================================
-# Mostrar os gráficos gerados
-
 cat("\n===== GRÁFICOS UNICAMP =====\n")
 print(unicamp$plot_genero_raca)
 print(unicamp$plot_area)
@@ -153,7 +133,63 @@ cat("\n===== GRÁFICOS UFBA =====\n")
 print(ufba$plot_genero_raca)
 print(ufba$plot_area)
 
-# Exibir totais de fomento
 cat("\n===== TOTAIS DE FOMENTO =====\n")
-cat("UNICAMP: R$", format(unicamp$total, big.mark = "."), "\n")
-cat("UFBA: R$", format(ufba$total, big.mark = "."), "\n")
+cat("UNICAMP: R$", format(unicamp$total, big.mark = ".", decimal.mark = ","), "\n")
+cat("UFBA: R$", format(ufba$total, big.mark = ".", decimal.mark = ","), "\n")
+
+# ========================================
+# 4. COMPARAÇÃO: BRANCOS VS RACIALIZADOS
+# ========================================
+
+# PREPARANDO OS DADOS DA UNICAMP ANTES DE COMPARAR
+dados_unicamp <- dados %>%
+  rename(
+    instituicao  = `01_Instituição`,
+    raca         = `09_Cor ou Raça`,
+    valor_R      = `Valor (R$)`
+  ) %>%
+  mutate(
+    valor_R = as.numeric(str_replace_all(str_replace_all(valor_R, "[^0-9,]", ""), ",", ".")),
+    instituicao = str_to_lower(instituicao),
+    grupo_raca = case_when(
+      str_detect(str_to_lower(raca), "branca") ~ "Branca",
+      str_detect(str_to_lower(raca), "não informad|nao informad") ~ "Não Informada",
+      TRUE ~ "Não Branca"
+    )
+  ) %>%
+  filter(!is.na(valor_R)) %>%
+  filter(str_detect(instituicao, "unicamp|estadual de campinas")) %>%
+  filter(grupo_raca != "Não Informada")
+
+# FAZENDO OS CÁLCULOS
+resumo_comp <- dados_unicamp %>%
+  group_by(grupo_raca) %>%
+  summarise(
+    qtd = n(),
+    valor_total = sum(valor_R),
+    .groups = "drop"
+  )
+
+b_qtd <- sum(resumo_comp$qtd[resumo_comp$grupo_raca == "Branca"])
+nb_qtd <- sum(resumo_comp$qtd[resumo_comp$grupo_raca == "Não Branca"])
+
+b_val <- sum(resumo_comp$valor_total[resumo_comp$grupo_raca == "Branca"])
+nb_val <- sum(resumo_comp$valor_total[resumo_comp$grupo_raca == "Não Branca"])
+
+# Médias
+media_b <- b_val / b_qtd
+media_nb <- nb_val / nb_qtd
+
+# EXIBINDO RESULTADOS FINAIS
+cat("\n========================================\n")
+cat("CENÁRIO COMPLETO UNICAMP (Todas as Bolsas)\n")
+cat("========================================\n")
+cat("Pessoas Brancas:     ", b_qtd, "bolsistas | R$", format(b_val, big.mark=".", decimal.mark=","), "\n")
+cat("Pessoas Racializadas:", nb_qtd, "bolsistas | R$", format(nb_val, big.mark=".", decimal.mark=","), "\n\n")
+
+cat("Média por pessoa Branca:      R$", format(round(media_b, 2), big.mark=".", decimal.mark=","), "\n")
+cat("Média por pessoa Racializada: R$", format(round(media_nb, 2), big.mark=".", decimal.mark=","), "\n\n")
+
+pct_media <- ((media_b / media_nb) - 1) * 100
+cat(sprintf(">> Em média, ao considerar todas as modalidades, uma pessoa branca ganha %.1f%% A MAIS que uma pessoa racializada na Unicamp.\n", pct_media))
+cat("========================================\n")
