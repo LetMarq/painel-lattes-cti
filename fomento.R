@@ -50,7 +50,8 @@ processar <- function(df, padrao_instituicao, nome) {
   # --- Aplicar filtros ---
   df <- df %>%
     filter(!is.na(valor_R)) %>%
-    filter(str_detect(instituicao, padrao_instituicao))
+    filter(str_detect(instituicao, padrao_instituicao))%>%
+    filter(str_detect(modalidade, "mestrado|doutorado"))
   
   # --- AGREGAÇÕES DE DADOS ---
   genero_raca <- df %>%
@@ -145,20 +146,23 @@ cat("UFBA: R$", format(ufba$total, big.mark = ".", decimal.mark = ","), "\n")
 dados_unicamp <- dados %>%
   rename(
     instituicao  = `01_Instituição`,
+    modalidade   = `03_Modalidade`,
     raca         = `09_Cor ou Raça`,
     valor_R      = `Valor (R$)`
   ) %>%
   mutate(
     valor_R = as.numeric(str_replace_all(str_replace_all(valor_R, "[^0-9,]", ""), ",", ".")),
     instituicao = str_to_lower(instituicao),
+    modalidade  = str_to_lower(modalidade),
     grupo_raca = case_when(
       str_detect(str_to_lower(raca), "branca") ~ "Branca",
-      str_detect(str_to_lower(raca), "não informad|nao informad") ~ "Não Informada",
-      TRUE ~ "Não Branca"
+      str_detect(str_to_lower(raca), "não desejo declarar|nao informad") ~ "Não Informada",
+      TRUE ~ "Racializado"
     )
   ) %>%
   filter(!is.na(valor_R)) %>%
   filter(str_detect(instituicao, "unicamp|estadual de campinas")) %>%
+  filter(str_detect(modalidade, "mestrado|doutorado")) %>%
   filter(grupo_raca != "Não Informada")
 
 # FAZENDO OS CÁLCULOS
@@ -171,10 +175,10 @@ resumo_comp <- dados_unicamp %>%
   )
 
 b_qtd <- sum(resumo_comp$qtd[resumo_comp$grupo_raca == "Branca"])
-nb_qtd <- sum(resumo_comp$qtd[resumo_comp$grupo_raca == "Não Branca"])
+nb_qtd <- sum(resumo_comp$qtd[resumo_comp$grupo_raca == "Racializado"])
 
 b_val <- sum(resumo_comp$valor_total[resumo_comp$grupo_raca == "Branca"])
-nb_val <- sum(resumo_comp$valor_total[resumo_comp$grupo_raca == "Não Branca"])
+nb_val <- sum(resumo_comp$valor_total[resumo_comp$grupo_raca == "Racializado"])
 
 # Médias
 media_b <- b_val / b_qtd
